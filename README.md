@@ -25,41 +25,65 @@ A production-ready backend system that receives guest messages from multiple cha
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
-```
-Inbound Message (any channel)
-       |
-       v
-[POST /webhook/message]
-       |
-       v
-[Payload Validation] ---> InboundMessageRequest (Pydantic)
-       |
-       v
-[Query Classification] ---> QueryClassifier (keyword-based scoring)
-       |
-       v
-[Unified Schema] ---> UnifiedMessage (normalized format)
-       |
-       v
-[Claude AI] ---> AIResponse (drafted_reply + self-assessed confidence)
-       |
-       v
-[Confidence Scorer] ---> composite score + action determination
-       |
-       v
-[WebhookResponse] ---> {message_id, query_type, drafted_reply, confidence_score, action}
+```mermaid
+flowchart TB
+    IN["📥 Inbound Message
+(WhatsApp · Booking.com · Airbnb · Instagram · Direct)"]
+
+    subgraph API["🐍 FastAPI Backend  (Python 3.11)"]
+        A1["POST /webhook/message
+Payload Validation · Pydantic"]
+        A2["🔤 Query Classifier
+Keyword-based Scoring (zero ML overhead)"]
+        A3["📋 Unified Schema
+Channel-agnostic UnifiedMessage"]
+    end
+
+    subgraph AI["🤖 Claude AI Layer  (Anthropic)"]
+        C1["Claude claude-sonnet-4-6
+AI Reply Generation"]
+        C2["Multi-factor Confidence Scorer
+Composite Score + Action Routing"]
+    end
+
+    subgraph OUT["📤 Response"]
+        R1["WebhookResponse
+message_id · query_type · drafted_reply
+confidence_score · action"]
+    end
+
+    subgraph DB["🗄️ PostgreSQL 15"]
+        D1["Messages · Classifications · Replies"]
+    end
+
+    IN --> A1 --> A2 --> A3 --> C1 --> C2 --> R1
+    A3 <--> DB
+
+    classDef in fill:#0d47a1,stroke:#42a5f5,color:#e3f2fd
+    classDef api fill:#1b5e20,stroke:#66bb6a,color:#e8f5e9
+    classDef ai fill:#4a148c,stroke:#ba68c8,color:#f3e5f5
+    classDef out fill:#1a237e,stroke:#7986cb,color:#e8eaf6
+    classDef db fill:#3e2723,stroke:#ff8a65,color:#fbe9e7
+    class IN in
+    class A1,A2,A3 api
+    class C1,C2 ai
+    class R1 out
+    class D1 db
 ```
 
-**Design Decisions by Ravikumar:**
-1. **Keyword-based classification** over ML model for speed, simplicity, and zero training overhead
-2. **Multi-factor confidence scoring** (not just Claude's self-assessment) for more reliable automation decisions
-3. **Unified schema** ensures all downstream processing is channel-agnostic
-4. **Singleton pattern** for classifier, scorer, and Claude client to avoid per-request initialization overhead
+**Request Flow:**
+1. **Inbound messages** arrive from any of 5 channels (WhatsApp, Booking.com, Airbnb, Instagram, Direct)
+2. **Pydantic validation** normalizes the raw payload into a typed `InboundMessageRequest` model
+3. **Query Classifier** applies keyword-based scoring to determine intent — no ML training overhead, zero latency
+4. **Unified Schema** converts every channel's format into a single `UnifiedMessage` for downstream processing
+5. **Claude claude-sonnet-4-6** drafts a personalized reply with self-assessed confidence using the guest context
+6. **Multi-factor Confidence Scorer** combines Claude's self-assessment + rule signals into a composite score
+7. **Action Router** uses the score to decide: `auto_send` (high confidence) vs `human_review` (low confidence)
+8. **PostgreSQL** stores the full interaction audit trail for analytics and retraining
 
 ---
-
 ## Quick Start
 
 ### Prerequisites
